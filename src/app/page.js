@@ -1,12 +1,16 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(true);
   const [answer, setAnswer] = useState("");
+  const [isChecking, setIsChecking] = useState(false);
+  const [showCorrection, setShowCorrection] = useState(false);
+  const [correctTranslation, setCorrectTranslation] = useState("");
+  const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -29,9 +33,43 @@ export default function Home() {
     };
   }, []);
 
-  function handleSubmit(e) {
+  async function fetchNewWord() {
+    setShowCorrection(false);
+    setCorrectTranslation("");
+    setShowSuccess(false);
+    setAnswer("");
+    setIsLoadingPrompt(true);
+    const res = await fetch("/api/word", { cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to load word");
+    const json = await res.json();
+    setPrompt(json.word ?? "");
+    setIsLoadingPrompt(false);
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
-    // Submission intentionally not implemented yet.
+    if (!prompt) return;
+    setIsChecking(true);
+    try {
+      const res = await fetch("/api/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word: prompt, answer }),
+      });
+      if (!res.ok) throw new Error("Failed to check answer");
+      const json = await res.json();
+      if (json.correct) {
+        setShowSuccess(true);
+        setTimeout(async () => {
+          await fetchNewWord();
+        }, 1500); // Show success message for 1.5 seconds
+      } else {
+        setShowCorrection(true);
+        setCorrectTranslation(json.translation ?? "");
+      }
+    } finally {
+      setIsChecking(false);
+    }
   }
 
   return (
@@ -73,12 +111,35 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <button
                   type="submit"
-                  disabled={!answer.trim() || isLoadingPrompt}
+                  disabled={isLoadingPrompt || isChecking || !answer.trim()}
                   className="inline-flex items-center rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-5 py-2.5 text-sm font-medium text-white transition hover:from-cyan-400 hover:to-fuchsia-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Submit Answer
+                  {isChecking ? "Checking..." : "Submit Answer"}
                 </button>
+
+                {showCorrection && (
+                  <button
+                    type="button"
+                    onClick={fetchNewWord}
+                    disabled={isLoadingPrompt}
+                    className="inline-flex items-center rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-foreground transition hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next word
+                  </button>
+                )}
               </div>
+
+              {showSuccess && (
+                <div className="text-lg font-medium text-green-400 animate-pulse">
+                  ✓ Correct!
+                </div>
+              )}
+
+              {showCorrection && (
+                <div className="text-base text-foreground/80">
+                  Correct translation: <span className="text-xl font-medium text-foreground">{correctTranslation}</span>
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -86,7 +147,17 @@ export default function Home() {
         <div className="mt-4 text-center text-xs text-foreground/60">
           Tip: Press Enter to submit
         </div>
+
+        <div className="mt-3 text-center">
+          <Link
+            href="/flashcards/music"
+            className="inline-flex items-center rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-5 py-2.5 text-sm font-medium text-white transition hover:from-cyan-400 hover:to-fuchsia-400"
+          >
+            Try Music Flashcards
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
+
